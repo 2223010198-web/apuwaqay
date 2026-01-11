@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Para guardar datos localmente
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../app_routes.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -13,7 +13,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _dniController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController(); // Nuevo
   bool _isLoading = false;
+  bool _codeSent = false; // Para saber si ya enviamos el SMS
+  final TextEditingController _otpController = TextEditingController(); // Código SMS
 
   @override
   void initState() {
@@ -21,30 +24,54 @@ class _LoginScreenState extends State<LoginScreen> {
     _checkLoginStatus();
   }
 
-  // Verificar si ya se registró antes para saltar esta pantalla
   void _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final bool? isRegistered = prefs.getBool('isRegistered');
-    if (isRegistered == true && mounted) {
+    if (prefs.getBool('isRegistered') == true && mounted) {
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     }
   }
 
-  void _saveAndLogin() async {
+  // Simular envío de SMS
+  void _sendVerificationCode() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
+      // Simular delay de red
+      await Future.delayed(const Duration(seconds: 1));
 
-      // Guardamos los datos en el celular (Memoria local)
+      setState(() {
+        _isLoading = false;
+        _codeSent = true; // Mostrar campo de código
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Código enviado: 1234 (Simulado)")),
+        );
+      }
+    }
+  }
+
+  void _verifyAndLogin() async {
+    if (_otpController.text == "1234") { // Validación simple simulada
+      setState(() => _isLoading = true);
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userName', _nameController.text);
       await prefs.setString('userDni', _dniController.text);
-      await prefs.setBool('isRegistered', true); // Marcamos que ya entró
+      await prefs.setString('userPhone', _phoneController.text);
+      await prefs.setBool('isRegistered', true);
 
-      // Simulamos un pequeño delay estético
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Valores por defecto para SOS
+      await prefs.setBool('sos_enabled', true);
+      await prefs.setBool('sos_auto_send', false);
+      await prefs.setBool('sos_realtime', false);
 
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.home);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Código incorrecto"), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -55,9 +82,9 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // CABECERA
+            // Cabecera igual (resumida para ahorrar espacio visual)
             Container(
-              height: 300,
+              height: 250,
               decoration: const BoxDecoration(
                 color: Color(0xFFCF0A2C),
                 borderRadius: BorderRadius.only(bottomLeft: Radius.circular(60)),
@@ -66,73 +93,77 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: Image.asset('assets/images/logo.png', width: 80, height: 80),
-                    ),
-                    const SizedBox(height: 15),
-                    const Text(
-                      "APU WAQAY",
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 2),
-                    ),
-                    const Text("Registro de Brigadista / Usuario", style: TextStyle(color: Colors.white70)),
+                    Image.asset('assets/images/logo.png', width: 70, height: 70),
+                    const SizedBox(height: 10),
+                    const Text("APU WAQAY", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const Text("Registro de Usuario", style: TextStyle(color: Colors.white70)),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 30),
 
-            // FORMULARIO
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Form(
                 key: _formKey,
                 child: Column(
                   children: [
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: "Nombre Completo",
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    if (!_codeSent) ...[
+                      // PASO 1: DATOS
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: _inputDeco("Nombre Completo", Icons.person),
+                        validator: (v) => v!.isEmpty ? 'Requerido' : null,
                       ),
-                      validator: (value) => value!.isEmpty ? 'Ingrese su nombre' : null,
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: _dniController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: "DNI / Identificación",
-                        prefixIcon: const Icon(Icons.badge),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      const SizedBox(height: 15),
+                      TextFormField(
+                        controller: _dniController,
+                        keyboardType: TextInputType.number,
+                        decoration: _inputDeco("DNI", Icons.badge),
+                        validator: (v) => v!.length != 8 ? 'DNI inválido' : null,
                       ),
-                      validator: (value) => value!.isEmpty ? 'Ingrese su DNI' : null,
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "Estos datos se usarán solo para identificarte en los mensajes de SOS.",
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 30),
-
-                    // BOTÓN INGRESAR
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _saveAndLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFCF0A2C),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      const SizedBox(height: 15),
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: _inputDeco("Celular", Icons.phone),
+                        validator: (v) => v!.length < 9 ? 'Celular inválido' : null,
+                      ),
+                      const SizedBox(height: 30),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _sendVerificationCode,
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCF0A2C)),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(color: Colors.white)
+                              : const Text("VERIFICAR NÚMERO", style: TextStyle(color: Colors.white)),
                         ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text("GUARDAR Y ENTRAR", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
                       ),
-                    ),
+                    ] else ...[
+                      // PASO 2: CÓDIGO SMS
+                      const Text("Se envió un SMS a tu número.", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 20),
+                      TextFormField(
+                        controller: _otpController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 24, letterSpacing: 5),
+                        decoration: _inputDeco("Código SMS (1234)", Icons.lock_clock),
+                      ),
+                      const SizedBox(height: 30),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _verifyAndLogin,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          child: const Text("CONFIRMAR Y ENTRAR", style: TextStyle(color: Colors.white)),
+                        ),
+                      ),
+                    ]
                   ],
                 ),
               ),
@@ -140,6 +171,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  InputDecoration _inputDeco(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }
