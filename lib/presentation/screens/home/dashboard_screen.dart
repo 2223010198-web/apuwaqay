@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_vibrate/flutter_vibrate.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 import 'package:telephony/telephony.dart'; // <--- USAMOS LA LIBRERÍA AUTOMÁTICA
 import '../../../app_routes.dart';
 
@@ -76,21 +77,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // --- FUNCIÓN SOS AUTOMÁTICA ---
+// Definimos el canal de comunicación con Kotlin
+  static const platform = MethodChannel('com.apuwaqay/sms');
+
+  // --- FUNCIÓN SOS AUTOMÁTICA (NATIVA) ---
   Future<void> _sendSOS({bool isAuto = false}) async {
+    // Si es manual y seguro, avisar
     if (!isAuto && alertLevel == 0) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sistema Seguro.")));
       return;
     }
 
-    final Telephony telephony = Telephony.instance;
+    // 1. Usamos Permission Handler para verificar permisos antes de llamar al nativo
+    // (Asegúrate de tener permission_handler en pubspec.yaml e importado)
+    // Si no tienes permission_handler importado, agrégalo: import 'package:permission_handler/permission_handler.dart';
+    // O usa la lógica de telephony para pedir permisos si prefieres, pero permission_handler es mejor.
 
-    // 1. Pedir permisos
-    bool? smsGranted = await telephony.requestPhoneAndSmsPermissions;
-    if (smsGranted != true) {
-      debugPrint("Permiso SMS denegado");
-      return;
-    }
+    // Asumimos que telephony ya pidió los permisos al inicio o usamos permission_handler:
+    // await Permission.sms.request();
 
     // 2. Obtener GPS
     LocationPermission permission = await Geolocator.checkPermission();
@@ -100,7 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (mounted && !isAuto) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enviando alerta silenciosa...")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enviando alerta nativa...")));
     }
 
     // 3. Coordenadas
@@ -117,30 +121,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String c1 = prefs.getString('sos_contact_1') ?? "";
     String c2 = prefs.getString('sos_contact_2') ?? "";
 
-    // NÚMEROS DE DESTINO
-    List<String> recipients = ["992934043"]; // <--- ¡CAMBIA ESTO POR TU NÚMERO PARA PROBAR!
+    List<String> recipients = ["992934043"]; // TU NÚMERO
     if (c1.isNotEmpty) recipients.add(c1);
     if (c2.isNotEmpty) recipients.add(c2);
 
     String mapsLink = "http://maps.google.com/?q=${position.latitude},${position.longitude}";
     String msg = "¡SOS HUAYCO! Soy $userName. UBICACION: $mapsLink";
 
-    // 5. Enviar (Bucle)
+    // 5. ENVIAR USANDO CÓDIGO NATIVO (KOTLIN)
+    int successCount = 0;
     for (String number in recipients) {
       try {
-        await telephony.sendSms(
-            to: number,
-            message: msg,
-            statusListener: (SendStatus status) {
-              if (status == SendStatus.SENT) debugPrint("✅ SMS enviado a $number");
-            }
-        );
+        // Llamamos a la función que creamos en MainActivity.kt
+        await platform.invokeMethod('sendDirectSMS', {
+          "phone": number,
+          "msg": msg
+        });
+        debugPrint("✅ SMS enviado nativamente a $number");
+        successCount++;
       } catch (e) {
-        debugPrint("❌ Error enviando a $number: $e");
+        debugPrint("❌ Error nativo enviando a $number: $e");
       }
     }
-  }
 
+    if (mounted && successCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("✅ Alerta enviada a $successCount contactos."), backgroundColor: Colors.green),
+      );
+    }
+  }
   void _showEmergencyDialog() {
     showDialog(
       context: context,
