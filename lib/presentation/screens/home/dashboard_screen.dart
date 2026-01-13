@@ -25,7 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   double vibrationIntensity = 0.0;
   String etaHuayco = "";
 
-  // Variable para controlar si faltan permisos
+  // Variable para controlar permisos
   bool _missingPermissions = true;
 
   // Canal nativo SMS
@@ -43,9 +43,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     WidgetsBinding.instance.addObserver(this);
     _loadUserData();
     _initNotifications();
-    _checkPermissionsStatus(); // Verificar permisos al iniciar
+    _checkPermissionsStatus();
 
-    // Pedir permisos iniciales al abrir (con leve retraso para no bloquear UI)
     Future.delayed(const Duration(seconds: 1), () {
       _requestAllPermissions();
     });
@@ -61,7 +60,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Verificar permisos cada vez que vuelve a la app
       _checkPermissionsStatus();
       if (alertLevel == 1) {
         _checkPermissionsForWarning();
@@ -73,11 +71,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   void _initNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
     AndroidInitializationSettings('@mipmap/ic_launcher');
-
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
-
     await _notificationsPlugin.initialize(initializationSettings);
   }
 
@@ -89,16 +85,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         importance: Importance.max,
         priority: Priority.high,
         ticker: 'ticker');
-
     const NotificationDetails platformChannelSpecifics =
     NotificationDetails(android: androidPlatformChannelSpecifics);
-
     await _notificationsPlugin.show(0, title, body, platformChannelSpecifics);
   }
 
   // --- 2. GESTIÓN DE PERMISOS ---
-
-  // Función para VERIFICAR si falta algo (sin pedir, solo mirar)
   Future<void> _checkPermissionsStatus() async {
     bool loc = await Permission.location.isGranted;
     bool sms = await Permission.sms.isGranted;
@@ -107,7 +99,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
     if (mounted) {
       setState(() {
-        // Si falta CUALQUIERA de estos, activamos la bandera
         _missingPermissions = !(loc && sms && phone && notif);
       });
     }
@@ -120,8 +111,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       Permission.phone,
       Permission.notification,
     ].request();
-
-    // Volvemos a verificar el estado después de pedir
     _checkPermissionsStatus();
   }
 
@@ -151,31 +140,88 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
-  // Diálogo manual cuando presionan el triangulo amarillo
-  void _showPermissionWarningDialog() {
+  // --- 3. NUEVA LÓGICA DEL BOTÓN SOS ---
+  void _handleSosPress() {
+    if (alertLevel == 0) {
+      // ZONA SEGURA (VERDE): Solo información
+      _showSafeModeDialog();
+    } else if (alertLevel == 1) {
+      // PRECAUCIÓN (NARANJA): Confirmación con lista de contactos
+      _showWarningConfirmationDialog();
+    } else {
+      // PELIGRO (ROJO): Envío directo
+      _sendSOS(isAuto: false);
+    }
+  }
+
+  void _showSafeModeDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(children: [Icon(Icons.warning_amber, color: Colors.orange), SizedBox(width: 10), Text("Permisos Faltantes")]),
-        content: const Text("Se debe dar permisos para notificar y recibir alertas, y enviar tu ubicación en caso de huayco."),
+        title: const Row(children: [Icon(Icons.info_outline, color: Colors.blue), SizedBox(width: 10), Text("Información SOS")]),
+        content: const Text(
+          "El botón SOS es tu línea de vida. Sirve para enviar tu ubicación exacta a INDECI y a tus contactos de confianza en caso de peligro real.\n\nPuedes personalizar los números de destino en Configuración.",
+          textAlign: TextAlign.justify,
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+          TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _requestAllPermissions(); // Intenta pedir permisos de nuevo
-              // Si están denegados permanentemente, abrimos ajustes
-              openAppSettings();
+              Navigator.pushNamed(context, AppRoutes.editSos);
             },
-            child: const Text("SOLUCIONAR AHORA"),
+            child: const Text("CONFIGURAR"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("ENTENDIDO"),
           ),
         ],
       ),
     );
   }
 
-  // --- 3. LÓGICA DE VIBRACIÓN ---
+  Future<void> _showWarningConfirmationDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    String c1 = prefs.getString('sos_contact_1') ?? "";
+    String c2 = prefs.getString('sos_contact_2') ?? "";
+    String contactsList = "• INDECI (115)\n";
+    if (c1.isNotEmpty) contactsList += "• $c1\n";
+    if (c2.isNotEmpty) contactsList += "• $c2\n";
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.orange[50],
+        title: const Row(children: [Icon(Icons.send_and_archive, color: Colors.deepOrange), SizedBox(width: 10), Text("¿Enviar Alerta?")]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Estás en zona de precaución. Se enviará tu ubicación a:"),
+            const SizedBox(height: 10),
+            Text(contactsList, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 10),
+            const Text("¿Confirmas el envío?"),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(context);
+              _sendSOS(isAuto: false);
+            },
+            child: const Text("ENVIAR AHORA"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- 4. VIBRACIÓN Y ALERTAS ---
   void _startVibrationPattern({required bool isRedAlert}) {
     _stopVibration();
 
@@ -221,8 +267,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
-  // --- 4. FUNCIONES AUXILIARES ---
-
+  // --- 5. FUNCIONES AUXILIARES ---
   Color getStatusColor() {
     if (alertLevel == 0) return Colors.green;
     if (alertLevel == 1) return Colors.orange;
@@ -245,49 +290,40 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     });
   }
 
-  // --- 5. SIMULACIÓN ---
+  // --- 6. SIMULACIÓN ---
   void _simulateChange() async {
     setState(() {
       alertLevel = (alertLevel + 1) % 3;
-
       vibrationIntensity = 0.0;
       etaHuayco = "";
 
       if (alertLevel == 0) {
         _stopVibration();
       } else if (alertLevel == 1) {
+        // NARANJA
         vibrationIntensity = 3.5;
         etaHuayco = "Posible en 45 min";
-
         _showNotification("⚠️ ALERTA: Precaución", "Nivel del río subiendo. Mantente alerta.");
         _startVibrationPattern(isRedAlert: false);
         _showCautionDialog();
         _checkPermissionsForWarning();
 
       } else if (alertLevel == 2) {
+        // ROJO
         vibrationIntensity = 7.8;
         etaHuayco = "IMPACTO EN 15 MIN";
-
         _showNotification("🚨 PELIGRO: HUAYCO INMINENTE", "Evacúa inmediatamente a zonas altas.");
         _startVibrationPattern(isRedAlert: true);
-
         if (autoSend) _sendSOS(isAuto: true);
         _showEmergencyDialog();
       }
     });
   }
 
-  // --- 6. ENVÍO SOS (NATIVO) ---
+  // --- 7. ENVÍO SOS (NATIVO) ---
   Future<void> _sendSOS({bool isAuto = false}) async {
-    if (!isAuto && alertLevel == 0) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sistema Seguro.")));
-      return;
-    }
-
     if (await Permission.sms.isDenied) await Permission.sms.request();
     if (await Permission.location.isDenied) await Permission.location.request();
-
-    // Verificamos de nuevo para actualizar el icono amarillo
     _checkPermissionsStatus();
 
     LocationPermission permission = await Geolocator.checkPermission();
@@ -335,7 +371,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
-  // --- DIÁLOGOS ---
+  // --- DIÁLOGOS DE ALERTA ---
   void _showCautionDialog() {
     showDialog(
       context: context,
@@ -391,6 +427,28 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     );
   }
 
+  void _showPermissionWarningDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(children: [Icon(Icons.warning_amber, color: Colors.orange), SizedBox(width: 10), Text("Permisos Faltantes")]),
+        content: const Text("Se debe dar permisos para notificar y recibir alertas, y enviar tu ubicación en caso de huayco."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(context);
+              _requestAllPermissions();
+              openAppSettings();
+            },
+            child: const Text("SOLUCIONAR AHORA"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -437,30 +495,27 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         ],
       ),
 
-      // --- AQUÍ ESTÁ LA MAGIA DE LA UI ---
-      // Usamos un Row para poner el icono de advertencia AL LADO del SOS
       floatingActionButton: Row(
-        mainAxisAlignment: MainAxisAlignment.end, // Alinear a la derecha como un FAB normal
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // 1. ICONO DE ADVERTENCIA (Solo aparece si faltan permisos y el SOS está activo)
           if (_missingPermissions && sosEnabled) ...[
             FloatingActionButton.small(
-              heroTag: "btn_warning", // Tag único para evitar error de Hero
+              heroTag: "btn_warning",
               backgroundColor: Colors.yellow[700],
               onPressed: _showPermissionWarningDialog,
               child: const Icon(Icons.warning_amber, color: Colors.black, size: 28),
             ),
-            const SizedBox(width: 15), // Espacio entre advertencia y SOS
+            const SizedBox(width: 15),
           ],
 
-          // 2. BOTÓN SOS ORIGINAL
           if (sosEnabled)
             FloatingActionButton.extended(
               heroTag: "btn_sos",
-              onPressed: () => _sendSOS(isAuto: false),
+              // AQUÍ CAMBIAMOS EL COMPORTAMIENTO SEGÚN EL NIVEL
+              onPressed: _handleSosPress,
               backgroundColor: alertLevel == 0 ? Colors.grey : Colors.red[900],
               icon: const Icon(Icons.sos, color: Colors.white, size: 30),
-              label: Text(alertLevel == 0 ? "SOS (Inactivo)" : "SOS", style: const TextStyle(color: Colors.white)),
+              label: Text(alertLevel == 0 ? "SOS (Info)" : "SOS", style: const TextStyle(color: Colors.white)),
             ),
         ],
       ),
@@ -496,7 +551,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              // AQUÍ SE ARREGLA EL PROBLEMA DEL BOTÓN TAPANDO LA INFO
+              // Se agregó 'bottom: 100' para dejar espacio libre al final
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
               child: GridView.count(
                 crossAxisCount: 2,
                 crossAxisSpacing: 15,

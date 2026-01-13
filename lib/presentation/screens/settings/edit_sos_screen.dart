@@ -12,7 +12,6 @@ class _EditSosScreenState extends State<EditSosScreen> {
   final _contact1Controller = TextEditingController();
   final _contact2Controller = TextEditingController();
 
-  bool _enableSos = true;
   bool _autoSend = false;
   bool _realTime = false;
 
@@ -27,7 +26,6 @@ class _EditSosScreenState extends State<EditSosScreen> {
     setState(() {
       _contact1Controller.text = prefs.getString('sos_contact_1') ?? '';
       _contact2Controller.text = prefs.getString('sos_contact_2') ?? '';
-      _enableSos = prefs.getBool('sos_enabled') ?? true;
       _autoSend = prefs.getBool('sos_auto_send') ?? false;
       _realTime = prefs.getBool('sos_realtime') ?? false;
     });
@@ -37,7 +35,6 @@ class _EditSosScreenState extends State<EditSosScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('sos_contact_1', _contact1Controller.text);
     await prefs.setString('sos_contact_2', _contact2Controller.text);
-    await prefs.setBool('sos_enabled', _enableSos);
     await prefs.setBool('sos_auto_send', _autoSend);
     await prefs.setBool('sos_realtime', _realTime);
 
@@ -83,13 +80,6 @@ class _EditSosScreenState extends State<EditSosScreen> {
           const Divider(height: 40),
 
           // 3. Configuraciones Avanzadas
-          SwitchListTile(
-            title: const Text("Habilitar Botón SOS"),
-            subtitle: const Text("Mostrar botón en pantalla principal"),
-            value: _enableSos,
-            onChanged: (v) => setState(() => _enableSos = v),
-            activeColor: Colors.red,
-          ),
           SwitchListTile(
             title: const Text("Envío Automático"),
             subtitle: const Text("Enviar ubicación automáticamente si hay PELIGRO de Huayco"),
