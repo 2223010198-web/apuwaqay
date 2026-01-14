@@ -1,8 +1,8 @@
-import 'dart:async'; // Para controlar el tiempo de vibración
+import 'dart:async'; // Para Streams y Timers
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vibrate/flutter_vibrate.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart'; // Tecnología base compatible con Huawei/Android
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -16,25 +16,24 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
-  // VARIABLES DE ESTADO
-  int alertLevel = 0; // 0=Seguro, 1=Precaución, 2=Peligro
+  // --- VARIABLES DE ESTADO ---
+  int alertLevel = 0;
   String userName = "Usuario";
   bool sosEnabled = true;
   bool autoSend = false;
-  bool realTime = false;
+  bool realTime = false; // Controla el rastreo continuo
   double vibrationIntensity = 0.0;
   String etaHuayco = "";
 
-  // Variable para controlar permisos
   bool _missingPermissions = true;
 
-  // Canal nativo SMS
+  // --- VARIABLES DE UBICACIÓN (HUAWEI/ANDROID TECH) ---
+  StreamSubscription<Position>? _positionStreamSubscription;
+  Position? _lastKnownPosition; // Guardamos la última ubicación precisa
+  bool _isTracking = false;
+
   static const platform = MethodChannel('com.apuwaqay/sms');
-
-  // Notificaciones
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
-
-  // Control de Vibración
   Timer? _vibrationTimer;
 
   @override
@@ -54,6 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopVibration();
+    _stopLocationStream(); // Detener rastreo al cerrar
     super.dispose();
   }
 
@@ -61,13 +61,58 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkPermissionsStatus();
-      if (alertLevel == 1) {
-        _checkPermissionsForWarning();
-      }
+      if (alertLevel == 1) _checkPermissionsForWarning();
+      // Reactivar rastreo si estaba encendido
+      if (realTime && !_isTracking) _startLocationStream();
     }
   }
 
-  // --- 1. CONFIGURACIÓN DE NOTIFICACIONES ---
+  // --- 1. MOTOR DE UBICACIÓN EN TIEMPO REAL (REAL-TIME TRACKING) ---
+  // Esta función usa la tecnología Fused Location (compatible con HMS y GMS)
+  void _startLocationStream() async {
+    if (_isTracking) return;
+
+    // Configuración de alta precisión para Huawei/Honor
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high, // Usa GPS + WiFi + Celdas (Mayor precisión)
+      distanceFilter: 10, // Actualizar cada 10 metros (Ahorra batería pero mantiene precisión)
+    );
+
+    try {
+      _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings)
+          .listen((Position position) {
+        setState(() {
+          _lastKnownPosition = position;
+          _isTracking = true;
+        });
+        // Aquí podrías enviar la data a un servidor si quisieras tracking web
+        debugPrint("📍 Rastreo Activo: ${position.latitude}, ${position.longitude}");
+      });
+    } catch (e) {
+      debugPrint("Error iniciando rastreo: $e");
+    }
+  }
+
+  void _stopLocationStream() {
+    if (_positionStreamSubscription != null) {
+      _positionStreamSubscription!.cancel();
+      _positionStreamSubscription = null;
+      setState(() => _isTracking = false);
+    }
+  }
+
+  void _toggleRealTimeTracking(bool value) {
+    setState(() {
+      realTime = value;
+    });
+    if (value) {
+      _startLocationStream();
+    } else {
+      _stopLocationStream();
+    }
+  }
+
+  // --- 2. CONFIGURACIÓN DE NOTIFICACIONES ---
   void _initNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
     AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -78,78 +123,51 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   }
 
   Future<void> _showNotification(String title, String body) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-    AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
         'apu_waqay_alerts', 'Alertas de Huayco',
-        channelDescription: 'Notificaciones críticas de seguridad',
-        importance: Importance.max,
-        priority: Priority.high,
-        ticker: 'ticker');
-    const NotificationDetails platformChannelSpecifics =
-    NotificationDetails(android: androidPlatformChannelSpecifics);
-    await _notificationsPlugin.show(0, title, body, platformChannelSpecifics);
+        importance: Importance.max, priority: Priority.high, ticker: 'ticker');
+    await _notificationsPlugin.show(0, title, body, NotificationDetails(android: androidDetails));
   }
 
-  // --- 2. GESTIÓN DE PERMISOS ---
+  // --- 3. GESTIÓN DE PERMISOS ---
   Future<void> _checkPermissionsStatus() async {
     bool loc = await Permission.location.isGranted;
     bool sms = await Permission.sms.isGranted;
     bool phone = await Permission.phone.isGranted;
-    bool notif = await Permission.notification.isGranted;
 
-    if (mounted) {
-      setState(() {
-        _missingPermissions = !(loc && sms && phone && notif);
-      });
-    }
+    if (mounted) setState(() => _missingPermissions = !(loc && sms && phone));
   }
 
   Future<void> _requestAllPermissions() async {
-    await [
-      Permission.location,
-      Permission.sms,
-      Permission.phone,
-      Permission.notification,
-    ].request();
+    await [Permission.location, Permission.sms, Permission.phone, Permission.notification].request();
     _checkPermissionsStatus();
   }
 
   Future<void> _checkPermissionsForWarning() async {
-    if (sosEnabled && alertLevel == 1) {
-      if (_missingPermissions) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text("⚠️ Precaución Activada"),
-              content: const Text("Necesitamos permisos de SMS y Ubicación para protegerte."),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _requestAllPermissions();
-                  },
-                  child: const Text("Dar Permisos"),
-                ),
-              ],
-            ),
-          );
-        }
+    if (sosEnabled && alertLevel == 1 && _missingPermissions) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("⚠️ Precaución Activada"),
+            content: const Text("Necesitamos permisos de SMS y Ubicación para protegerte."),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+              ElevatedButton(onPressed: () {Navigator.pop(context); _requestAllPermissions();}, child: const Text("Dar Permisos")),
+            ],
+          ),
+        );
       }
     }
   }
 
-  // --- 3. NUEVA LÓGICA DEL BOTÓN SOS ---
+  // --- 4. LÓGICA DEL BOTÓN SOS ---
   void _handleSosPress() {
     if (alertLevel == 0) {
-      // ZONA SEGURA (VERDE): Solo información
       _showSafeModeDialog();
     } else if (alertLevel == 1) {
-      // PRECAUCIÓN (NARANJA): Confirmación con lista de contactos
       _showWarningConfirmationDialog();
     } else {
-      // PELIGRO (ROJO): Envío directo
       _sendSOS(isAuto: false);
     }
   }
@@ -160,21 +178,15 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       builder: (context) => AlertDialog(
         title: const Row(children: [Icon(Icons.info_outline, color: Colors.blue), SizedBox(width: 10), Text("Información SOS")]),
         content: const Text(
-          "El botón SOS es tu línea de vida. Sirve para enviar tu ubicación exacta a INDECI y a tus contactos de confianza en caso de peligro real.\n\nPuedes personalizar los números de destino en Configuración.",
+          "El botón SOS envía tu ubicación a INDECI y tus contactos.\n\nPuedes personalizar los números en Configuración.",
           textAlign: TextAlign.justify,
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, AppRoutes.editSos);
-            },
+            onPressed: () {Navigator.pop(context); Navigator.pushNamed(context, AppRoutes.editSos).then((_) => _loadUserData());},
             child: const Text("CONFIGURAR"),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("ENTENDIDO"),
-          ),
+          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("ENTENDIDO")),
         ],
       ),
     );
@@ -184,36 +196,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     final prefs = await SharedPreferences.getInstance();
     String c1 = prefs.getString('sos_contact_1') ?? "";
     String c2 = prefs.getString('sos_contact_2') ?? "";
-    String contactsList = "• INDECI (115)\n";
-    if (c1.isNotEmpty) contactsList += "• $c1\n";
-    if (c2.isNotEmpty) contactsList += "• $c2\n";
+    String contacts = "• INDECI (115)\n" + (c1.isNotEmpty ? "• $c1\n" : "") + (c2.isNotEmpty ? "• $c2\n" : "");
 
     if (!mounted) return;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.orange[50],
-        title: const Row(children: [Icon(Icons.send_and_archive, color: Colors.deepOrange), SizedBox(width: 10), Text("¿Enviar Alerta?")]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Estás en zona de precaución. Se enviará tu ubicación a:"),
-            const SizedBox(height: 10),
-            Text(contactsList, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            const Text("¿Confirmas el envío?"),
-          ],
-        ),
+        title: const Text("¿Enviar Alerta de Precaución?"),
+        content: Text("Se enviará tu ubicación a:\n\n$contacts"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-            onPressed: () {
-              Navigator.pop(context);
-              _sendSOS(isAuto: false);
-            },
+            onPressed: () {Navigator.pop(context); _sendSOS(isAuto: false);},
             child: const Text("ENVIAR AHORA"),
           ),
         ],
@@ -221,10 +217,84 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     );
   }
 
-  // --- 4. VIBRACIÓN Y ALERTAS ---
+  // --- 5. ENVÍO SOS OPTIMIZADO (INSTANTÁNEO) ---
+  Future<void> _sendSOS({bool isAuto = false}) async {
+    if (await Permission.sms.isDenied) await Permission.sms.request();
+    if (await Permission.location.isDenied) await Permission.location.request();
+
+    if (mounted && !isAuto) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enviando alerta prioritaria...")));
+    }
+
+    Position position;
+    try {
+      // TRUCO HUAWEI: Si ya tenemos rastreo en vivo, usamos la última data (0 ms de espera)
+      // Si no, pedimos ubicación fresca (puede tardar 2-5 segs)
+      if (_lastKnownPosition != null && DateTime.now().difference(_lastKnownPosition!.timestamp).inMinutes < 2) {
+        position = _lastKnownPosition!;
+        debugPrint("🚀 Usando ubicación en caché (Tiempo Real)");
+      } else {
+        position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      }
+    } catch (e) {
+      debugPrint("Error GPS: $e");
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    String c1 = prefs.getString('sos_contact_1') ?? "";
+    String c2 = prefs.getString('sos_contact_2') ?? "";
+    List<String> recipients = ["992934043"]; // TU NÚMERO DE PRUEBA
+    if (c1.isNotEmpty) recipients.add(c1);
+    if (c2.isNotEmpty) recipients.add(c2);
+
+    // Link mejorado para mayor compatibilidad
+    String mapsLink = "https://maps.google.com/?q=${position.latitude},${position.longitude}";
+    String typeMsg = realTime ? "[RASTREO ACTIVO]" : "[UBICACIÓN FIJA]";
+    String msg = "¡SOS HUAYCO! Soy $userName. $typeMsg: $mapsLink";
+
+    int successCount = 0;
+    for (String number in recipients) {
+      try {
+        await platform.invokeMethod('sendDirectSMS', {"phone": number, "msg": msg});
+        successCount++;
+      } catch (e) { debugPrint("❌ Error SMS: $e"); }
+    }
+
+    if (mounted && successCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ Alerta enviada a $successCount contactos."), backgroundColor: Colors.green));
+    }
+  }
+
+  // --- 6. SIMULACIÓN Y SENSORES ---
+  void _simulateChange() async {
+    setState(() {
+      alertLevel = (alertLevel + 1) % 3;
+      vibrationIntensity = 0.0;
+      etaHuayco = "";
+
+      if (alertLevel == 0) {
+        _stopVibration();
+      } else if (alertLevel == 1) {
+        vibrationIntensity = 3.5;
+        etaHuayco = "Posible en 45 min";
+        _showNotification("⚠️ PRECAUCIÓN", "Nivel del río subiendo.");
+        _startVibrationPattern(isRedAlert: false);
+        _showCautionDialog();
+        _checkPermissionsForWarning();
+      } else if (alertLevel == 2) {
+        vibrationIntensity = 7.8;
+        etaHuayco = "IMPACTO EN 15 MIN";
+        _showNotification("🚨 PELIGRO: HUAYCO", "¡Evacúa inmediatamente!");
+        _startVibrationPattern(isRedAlert: true);
+        if (autoSend) _sendSOS(isAuto: true);
+        _showEmergencyDialog();
+      }
+    });
+  }
+
   void _startVibrationPattern({required bool isRedAlert}) {
     _stopVibration();
-
     int counter = 0;
     int maxDuration = isRedAlert ? 10 : 5;
 
@@ -232,42 +302,38 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       _triggerVibrate();
       _vibrationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
         counter += 3;
-        if (counter >= maxDuration) {
-          _stopVibration();
-        } else {
-          _triggerVibrate();
-        }
+        if (counter >= maxDuration) _stopVibration(); else _triggerVibrate();
       });
     } else {
       _vibrationTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
         counter++;
-        if (counter >= (maxDuration * 2)) {
-          _stopVibration();
-        } else {
-          Vibrate.feedback(FeedbackType.warning);
-        }
+        if (counter >= (maxDuration * 2)) _stopVibration(); else Vibrate.feedback(FeedbackType.warning);
       });
     }
   }
 
   void _triggerVibrate() async {
-    bool canVibrate = await Vibrate.canVibrate;
-    if (canVibrate) {
-      Vibrate.vibrateWithPauses([
-        const Duration(milliseconds: 100),
-        const Duration(milliseconds: 1000),
-      ]);
-    }
+    if (await Vibrate.canVibrate) Vibrate.vibrateWithPauses([const Duration(milliseconds: 100), const Duration(milliseconds: 1000)]);
   }
 
   void _stopVibration() {
-    if (_vibrationTimer != null) {
-      _vibrationTimer!.cancel();
-      _vibrationTimer = null;
-    }
+    _vibrationTimer?.cancel();
+    _vibrationTimer = null;
   }
 
-  // --- 5. FUNCIONES AUXILIARES ---
+  // --- FUNCIONES DE CARGA Y ESTILO ---
+  void _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userName = prefs.getString('userName') ?? "Usuario";
+      sosEnabled = prefs.getBool('sos_enabled') ?? true;
+      autoSend = prefs.getBool('sos_auto_send') ?? false;
+      realTime = prefs.getBool('sos_realtime') ?? false;
+    });
+    // Iniciar rastreo si está habilitado
+    if (realTime) _startLocationStream();
+  }
+
   Color getStatusColor() {
     if (alertLevel == 0) return Colors.green;
     if (alertLevel == 1) return Colors.orange;
@@ -280,173 +346,39 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     return "¡PELIGRO DE HUAYCO!";
   }
 
-  void _loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      userName = prefs.getString('userName') ?? "Usuario";
-      sosEnabled = prefs.getBool('sos_enabled') ?? true;
-      autoSend = prefs.getBool('sos_auto_send') ?? false;
-      realTime = prefs.getBool('sos_realtime') ?? false;
-    });
-  }
-
-  // --- 6. SIMULACIÓN ---
-  void _simulateChange() async {
-    setState(() {
-      alertLevel = (alertLevel + 1) % 3;
-      vibrationIntensity = 0.0;
-      etaHuayco = "";
-
-      if (alertLevel == 0) {
-        _stopVibration();
-      } else if (alertLevel == 1) {
-        // NARANJA
-        vibrationIntensity = 3.5;
-        etaHuayco = "Posible en 45 min";
-        _showNotification("⚠️ ALERTA: Precaución", "Nivel del río subiendo. Mantente alerta.");
-        _startVibrationPattern(isRedAlert: false);
-        _showCautionDialog();
-        _checkPermissionsForWarning();
-
-      } else if (alertLevel == 2) {
-        // ROJO
-        vibrationIntensity = 7.8;
-        etaHuayco = "IMPACTO EN 15 MIN";
-        _showNotification("🚨 PELIGRO: HUAYCO INMINENTE", "Evacúa inmediatamente a zonas altas.");
-        _startVibrationPattern(isRedAlert: true);
-        if (autoSend) _sendSOS(isAuto: true);
-        _showEmergencyDialog();
-      }
-    });
-  }
-
-  // --- 7. ENVÍO SOS (NATIVO) ---
-  Future<void> _sendSOS({bool isAuto = false}) async {
-    if (await Permission.sms.isDenied) await Permission.sms.request();
-    if (await Permission.location.isDenied) await Permission.location.request();
-    _checkPermissionsStatus();
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
-
-    if (mounted && !isAuto) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enviando alerta nativa...")));
-    }
-
-    Position position;
-    try {
-      position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    } catch (e) {
-      debugPrint("Error GPS: $e");
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    String c1 = prefs.getString('sos_contact_1') ?? "";
-    String c2 = prefs.getString('sos_contact_2') ?? "";
-    List<String> recipients = ["992934043"];
-    if (c1.isNotEmpty) recipients.add(c1);
-    if (c2.isNotEmpty) recipients.add(c2);
-
-    String mapsLink = "http://maps.google.com/?q=${position.latitude},${position.longitude}";
-    String msg = "¡SOS HUAYCO! Soy $userName. UBICACION: $mapsLink";
-
-    int successCount = 0;
-    for (String number in recipients) {
-      try {
-        await platform.invokeMethod('sendDirectSMS', {"phone": number, "msg": msg});
-        successCount++;
-      } catch (e) {
-        debugPrint("❌ Error nativo: $e");
-      }
-    }
-
-    if (mounted && successCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ Alerta enviada a $successCount contactos."), backgroundColor: Colors.green),
-      );
-    }
-  }
-
-  // --- DIÁLOGOS DE ALERTA ---
+  // --- UI DIÁLOGOS ---
   void _showCautionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.orange[50],
-        title: const Row(children: [Icon(Icons.warning_amber, color: Colors.orange), SizedBox(width: 10), Text("PRECAUCIÓN")]),
-        content: const Text("Se ha detectado actividad inusual. Por favor, mantente atento a las notificaciones."),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () {
-              _stopVibration();
-              Navigator.pop(context);
-            },
-            child: const Text("ACEPTAR", style: TextStyle(color: Colors.white)),
-          )
-        ],
-      ),
-    );
+    showDialog(context: context, barrierDismissible: false, builder: (context) => AlertDialog(
+      backgroundColor: Colors.orange[50],
+      title: const Text("⚠️ PRECAUCIÓN"),
+      content: const Text("Actividad inusual detectada."),
+      actions: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), onPressed: () {_stopVibration(); Navigator.pop(context);}, child: const Text("ACEPTAR", style: TextStyle(color: Colors.white)))],
+    ));
   }
 
   void _showEmergencyDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.red[50],
-        title: const Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 10), Text("¡ALERTA ROJA!")]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Huayco inminente. ETA: $etaHuayco."),
-            const SizedBox(height: 10),
-            if (autoSend)
-              const Text("✅ Alerta enviada automáticamente.", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))
-            else
-              const Text("⚠️ Presiona SOS para enviar alerta.", style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () {
-              _stopVibration();
-              Navigator.pop(context);
-            },
-            child: const Text("ENTENDIDO"),
-          )
-        ],
-      ),
-    );
+    showDialog(context: context, barrierDismissible: false, builder: (context) => AlertDialog(
+      backgroundColor: Colors.red[50],
+      title: const Text("¡ALERTA ROJA!"),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text("Huayco inminente. ETA: $etaHuayco."),
+        const SizedBox(height: 10),
+        if (autoSend) const Text("✅ Alerta enviada automáticamente.", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))
+        else const Text("⚠️ Presiona SOS para enviar alerta.", style: TextStyle(fontWeight: FontWeight.bold)),
+      ]),
+      actions: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: () {_stopVibration(); Navigator.pop(context);}, child: const Text("ENTENDIDO"))],
+    ));
   }
 
   void _showPermissionWarningDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(children: [Icon(Icons.warning_amber, color: Colors.orange), SizedBox(width: 10), Text("Permisos Faltantes")]),
-        content: const Text("Se debe dar permisos para notificar y recibir alertas, y enviar tu ubicación en caso de huayco."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-            onPressed: () {
-              Navigator.pop(context);
-              _requestAllPermissions();
-              openAppSettings();
-            },
-            child: const Text("SOLUCIONAR AHORA"),
-          ),
-        ],
-      ),
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text("Permisos Faltantes"),
+      content: const Text("Se requieren permisos para que el sistema funcione."),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+        ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white), onPressed: () {Navigator.pop(context); _requestAllPermissions(); openAppSettings();}, child: const Text("SOLUCIONAR")),
+      ],
+    ));
   }
 
   @override
@@ -463,26 +395,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               accountEmail: const Text("Usuario Verificado"),
               currentAccountPicture: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, size: 40, color: Colors.black54)),
             ),
-            ListTile(
-              leading: const Icon(Icons.sos, color: Colors.red),
-              title: const Text("Editar SOS"),
-              subtitle: const Text("Contactos y Automatización"),
-              onTap: () async {
-                Navigator.pop(context);
-                await Navigator.pushNamed(context, AppRoutes.editSos);
-                _loadUserData();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text("Ajustes"),
-              subtitle: const Text("Perfil y Dirección"),
-              onTap: () async {
-                Navigator.pop(context);
-                await Navigator.pushNamed(context, AppRoutes.settings);
-                _loadUserData();
-              },
-            ),
+            ListTile(leading: const Icon(Icons.sos, color: Colors.red), title: const Text("Editar SOS"), onTap: () async {Navigator.pop(context); await Navigator.pushNamed(context, AppRoutes.editSos); _loadUserData();}),
+            ListTile(leading: const Icon(Icons.settings), title: const Text("Ajustes"), onTap: () async {Navigator.pop(context); await Navigator.pushNamed(context, AppRoutes.settings); _loadUserData();}),
           ],
         ),
       ),
@@ -490,81 +404,50 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         title: const Text("Monitor Apu Waqay"),
         backgroundColor: getStatusColor(),
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(icon: const Icon(Icons.bug_report), onPressed: _simulateChange, tooltip: "Simular Alerta"),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.bug_report), onPressed: _simulateChange, tooltip: "Simular Alerta")],
       ),
-
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (_missingPermissions && sosEnabled) ...[
-            FloatingActionButton.small(
-              heroTag: "btn_warning",
-              backgroundColor: Colors.yellow[700],
-              onPressed: _showPermissionWarningDialog,
-              child: const Icon(Icons.warning_amber, color: Colors.black, size: 28),
-            ),
-            const SizedBox(width: 15),
+            FloatingActionButton.small(heroTag: "btn_warning", elevation: 0, backgroundColor: Colors.transparent, highlightElevation: 0, splashColor: Colors.transparent, onPressed: _showPermissionWarningDialog, child: const Icon(Icons.warning_amber, color: Colors.yellow, size: 40)),
+            const SizedBox(width: 0),
           ],
-
-          if (sosEnabled)
-            FloatingActionButton.extended(
-              heroTag: "btn_sos",
-              // AQUÍ CAMBIAMOS EL COMPORTAMIENTO SEGÚN EL NIVEL
-              onPressed: _handleSosPress,
-              backgroundColor: alertLevel == 0 ? Colors.grey : Colors.red[900],
-              icon: const Icon(Icons.sos, color: Colors.white, size: 30),
-              label: Text(alertLevel == 0 ? "SOS (Info)" : "SOS", style: const TextStyle(color: Colors.white)),
-            ),
+          if (sosEnabled) FloatingActionButton.extended(heroTag: "btn_sos", onPressed: _handleSosPress, backgroundColor: alertLevel == 0 ? Colors.grey : Colors.red[900], icon: const Icon(Icons.sos, color: Colors.white, size: 30), label: Text(alertLevel == 0 ? "SOS (Info)" : "SOS", style: const TextStyle(color: Colors.white))),
         ],
       ),
-
       body: Column(
         children: [
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: getStatusColor(),
-              borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(40), bottomRight: Radius.circular(40)),
-              boxShadow: [BoxShadow(color: getStatusColor().withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
-            ),
-            child: Column(
-              children: [
-                Icon(alertLevel == 2 ? Icons.campaign : Icons.verified_user, size: 80, color: Colors.white),
-                const SizedBox(height: 10),
-                Text(getStatusText(), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                if (alertLevel == 2)
-                  Text("LLEGADA ESTIMADA: $etaHuayco", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
+            width: double.infinity, padding: const EdgeInsets.all(30),
+            decoration: BoxDecoration(color: getStatusColor(), borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(40), bottomRight: Radius.circular(40)), boxShadow: [BoxShadow(color: getStatusColor().withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))]),
+            child: Column(children: [
+              Icon(alertLevel == 2 ? Icons.campaign : Icons.verified_user, size: 80, color: Colors.white),
+              const SizedBox(height: 10),
+              Text(getStatusText(), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+              if (alertLevel == 2) Text("LLEGADA ESTIMADA: $etaHuayco", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            ]),
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.map),
-              icon: const Icon(Icons.people_alt),
-              label: const Text("Ver Ubicaciones Compartidas"),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.white, foregroundColor: Colors.black87),
-            ),
+            child: ElevatedButton.icon(onPressed: () => Navigator.pushNamed(context, AppRoutes.map), icon: const Icon(Icons.people_alt), label: const Text("Ver Ubicaciones Compartidas"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.white, foregroundColor: Colors.black87)),
           ),
           Expanded(
             child: Padding(
-              // AQUÍ SE ARREGLA EL PROBLEMA DEL BOTÓN TAPANDO LA INFO
-              // Se agregó 'bottom: 100' para dejar espacio libre al final
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
-              child: GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 15,
-                mainAxisSpacing: 15,
-                children: [
-                  _SensorCard(title: "Nivel Río", value: alertLevel == 2 ? "4.5 m" : "1.2 m", unit: "Metros", icon: Icons.waves, isCritical: alertLevel == 2),
-                  _SensorCard(title: "Lluvia", value: alertLevel == 2 ? "120 mm" : "0 mm", unit: "Acumulada", icon: Icons.cloud, isCritical: alertLevel == 2),
-                  _SensorCard(title: "Vibración", value: vibrationIntensity.toString(), unit: "Intensidad", icon: Icons.vibration, isCritical: vibrationIntensity > 5),
-                  const _SensorCard(title: "Humedad", value: "65%", unit: "Suelo", icon: Icons.grass, isCritical: false),
-                ],
-              ),
+              child: GridView.count(crossAxisCount: 2, crossAxisSpacing: 15, mainAxisSpacing: 15, children: [
+                _SensorCard(title: "Nivel Río", value: alertLevel == 2 ? "4.5 m" : "1.2 m", unit: "Metros", icon: Icons.waves, isCritical: alertLevel == 2),
+                _SensorCard(title: "Lluvia", value: alertLevel == 2 ? "120 mm" : "0 mm", unit: "Acumulada", icon: Icons.cloud, isCritical: alertLevel == 2),
+                _SensorCard(title: "Vibración", value: vibrationIntensity.toString(), unit: "Intensidad", icon: Icons.vibration, isCritical: vibrationIntensity > 5),
+                // TARJETA INTELIGENTE: Muestra si el rastreo Huawei/Android está activo
+                _SensorCard(
+                    title: "Rastreo",
+                    value: _isTracking ? "ACTIVO" : "INACTIVO",
+                    unit: "GPS",
+                    icon: _isTracking ? Icons.radar : Icons.location_disabled,
+                    isCritical: false
+                ),
+              ]),
             ),
           )
         ],
@@ -580,22 +463,6 @@ class _SensorCard extends StatelessWidget {
   const _SensorCard({required this.title, required this.value, required this.unit, required this.icon, required this.isCritical});
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      color: isCritical ? Colors.red[100] : Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 40, color: isCritical ? Colors.red : Colors.blueGrey),
-            const SizedBox(height: 10),
-            Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            Text("$title ($unit)", style: const TextStyle(fontSize: 12, color: Colors.grey), textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
+    return Card(elevation: 4, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), color: isCritical ? Colors.red[100] : Colors.white, child: Padding(padding: const EdgeInsets.all(16.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 40, color: isCritical ? Colors.red : Colors.blueGrey), const SizedBox(height: 10), Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), Text("$title ($unit)", style: const TextStyle(fontSize: 12, color: Colors.grey), textAlign: TextAlign.center)])));
   }
 }

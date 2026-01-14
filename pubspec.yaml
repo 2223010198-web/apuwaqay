@@ -36,11 +36,14 @@ dependencies:
 
   # --- UI & Mapas ---
   cupertino_icons: ^1.0.8  # Este suele venir por defecto
-  flutter_map: ^6.0.0
-  latlong2: ^0.9.0
+#  flutter_map: ^6.0.0
+ # latlong2: ^0.9.0
   fl_chart: ^0.66.0
   font_awesome_flutter: ^10.6.0
   flutter_local_notifications: ^17.1.0
+  flutter_map: ^6.1.0       # El mapa gratuito
+  latlong2: ^0.9.0          # Para manejar coordenadas
+  http: ^1.2.0              # Para hacer las búsquedas de direcciones
 
   # --- Hardware & Servicios ---
   geolocator: ^10.1.0       # GPS
@@ -52,7 +55,7 @@ dependencies:
 
   # --- Conectividad & Datos ---
   provider: ^6.1.1          # Gestión de Estado
-  http: ^1.1.0              # API REST
+# http: ^1.1.0              # API REST
   mqtt_client: ^10.0.1      # Conexión directa IoT
   shared_preferences: ^2.2.2 # Guardar datos mochila localmente
  # flutter_nearby_connections: ^1.1.2 # Red Mesh/Bluetooth
@@ -85,7 +88,7 @@ flutter:
   #   - images/a_dot_ham.jpeg
   # Agrega esto con cuidado en la indentación (2 espacios)
   assets:
-    - assets/images/
+    - assets/images/logo.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
