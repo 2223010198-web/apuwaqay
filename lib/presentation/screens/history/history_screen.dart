@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:latlong2/latlong.dart';
+import '../../widgets/side_menu.dart';
 
 // --- MODELO DE DATOS ACTUALIZADO ---
 class HuaycoEvent {
@@ -11,7 +12,7 @@ class HuaycoEvent {
   final String description;
   final String source;
   final LatLng coords;
-  final List<String> images; // <--- NUEVO: Lista de imágenes para el carrusel
+  final List<String> images;
 
   HuaycoEvent({
     required this.title,
@@ -35,6 +36,7 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _searchController = TextEditingController();
 
   // VARIABLE DE ESTADO PARA CONTROLAR LA VISTA (Lista o Detalle)
@@ -76,7 +78,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       description: "El fenómeno 'El Niño Costero' provocó uno de los desastres más grandes en la zona de Cajamarquilla.",
       source: "Noticias",
       coords: const LatLng(-11.950, -76.980),
-      images: ["https://cloudfront-us-east-1.images.arcpublishing.com/infobae/BPHD2NN67BAZNNL6EGIPVEM47A.png"], // Sin imágenes
+      images: ["https://cloudfront-us-east-1.images.arcpublishing.com/infobae/BPHD2NN67BAZNNL6EGIPVEM47A.png"],
     ),
     HuaycoEvent(
       title: "Alerta Río Rímac",
@@ -119,7 +121,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Usamos PopScope para que el botón "Atrás" de Android cierre el detalle primero en vez de salir de la app
     return PopScope(
       canPop: _selectedEvent == null,
       onPopInvoked: (didPop) {
@@ -128,7 +129,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         }
       },
       child: Scaffold(
+        key: _scaffoldKey, // NECESARIO PARA ABRIR EL DRAWER
         backgroundColor: Colors.grey[50],
+
+        drawer: const SideMenu(),
         // LÓGICA PRINCIPAL: Si hay un evento seleccionado, mostramos detalle, sino lista
         body: _selectedEvent != null ? _buildDetailView() : _buildListView(),
       ),
@@ -145,11 +149,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Container(
             padding: const EdgeInsets.only(top: 40, left: 20, right: 20, bottom: 20),
             color: Colors.white,
-            child: const Row(
+            // AQUÍ ESTABA EL ERROR: Se quitó 'const' antes de Row
+            child: Row(
               children: [
-                Text("Historial y Recursos", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Spacer(),
-                Icon(Icons.history_edu, color: Colors.blueGrey),
+                IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.black87),
+                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                ),
+                const SizedBox(width: 5),
+                const Text("Historial y Recursos", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                const Icon(Icons.history_edu, color: Colors.blueGrey),
               ],
             ),
           ),
@@ -187,7 +197,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               return _EventCard(
                 event: _filteredEvents[index],
                 onTap: () {
-                  // AL TOCAR LA TARJETA, CAMBIAMOS EL ESTADO A "MODO DETALLE"
                   setState(() {
                     _selectedEvent = _filteredEvents[index];
                   });
@@ -201,7 +210,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- VISTA 2: DETALLE DEL EVENTO (Carrusel + Info Completa) ---
+  // --- VISTA 2: DETALLE DEL EVENTO ---
   Widget _buildDetailView() {
     final event = _selectedEvent!;
     return SingleChildScrollView(
@@ -217,7 +226,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.black),
                   onPressed: () {
-                    // AL PRESIONAR ATRÁS, VOLVEMOS A LA LISTA
                     setState(() => _selectedEvent = null);
                   },
                 ),
@@ -259,7 +267,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 );
               },
             )
-                : Container( // Placeholder si no hay fotos
+                : Container(
               color: Colors.grey[200],
               child: Center(
                 child: Column(
@@ -274,7 +282,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
 
-          // 3. Indicador de Severidad Grande
+          // 3. Indicador de Severidad
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10),
@@ -297,7 +305,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Info Clave
                 _DetailRow(icon: Icons.calendar_today, label: "Fecha:", value: event.date),
                 _DetailRow(icon: Icons.location_on, label: "Ubicación:", value: event.location),
                 _DetailRow(icon: Icons.source, label: "Fuente:", value: event.source),
@@ -313,7 +320,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 const SizedBox(height: 30),
 
-                // Botón Ver en Mapa
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -342,7 +348,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- WIDGETS AUXILIARES Y CLASES PRIVADAS ---
+  // --- WIDGETS AUXILIARES ---
 
   Widget _buildEmergencySection() {
     return Container(
@@ -401,9 +407,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       default: return Colors.green;
     }
   }
-} // <--- FIN DE LA CLASE _HistoryScreenState
-
-// --- CLASES AUXILIARES FUERA DEL STATE ---
+}
 
 class _EmergencyButton extends StatelessWidget {
   final IconData icon;
@@ -435,8 +439,8 @@ class _EmergencyButton extends StatelessWidget {
 
 class _EventCard extends StatelessWidget {
   final HuaycoEvent event;
-  final Function(LatLng)? onMap; // Opcional si queremos botón directo en tarjeta
-  final VoidCallback? onTap; // Callback para abrir detalle
+  final Function(LatLng)? onMap;
+  final VoidCallback? onTap;
 
   const _EventCard({required this.event, this.onMap, this.onTap});
 
@@ -451,7 +455,7 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap, // Al tocar la tarjeta, ejecuta la acción
+      onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         padding: const EdgeInsets.all(16),
@@ -463,7 +467,6 @@ class _EventCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cabecera
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -482,11 +485,7 @@ class _EventCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-
-            // Título
             Text(event.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-
-            // Ubicación
             Row(
               children: [
                 const Icon(Icons.location_on, size: 14, color: Colors.grey),
@@ -495,17 +494,13 @@ class _EventCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-
-            // Descripción Corta
             Text(
               event.description,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, color: Colors.black87),
             ),
-
             const SizedBox(height: 10),
-            // Link falso "Ver más"
             const Align(
               alignment: Alignment.centerRight,
               child: Text("Ver detalles >", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
