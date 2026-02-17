@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.apuwaqay.apu_waqay"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -23,9 +23,9 @@ android {
     defaultConfig {
         applicationId = "com.apuwaqay.apu_waqay"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
     }
 
     buildTypes {

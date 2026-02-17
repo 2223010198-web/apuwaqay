@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setString('userName', _nameController.text);
     await prefs.setString('userPhone', _phoneController.text);
     await prefs.setString('userAddress', _addressController.text);
-    // DNI usualmente no se edita, pero lo permitimos por si hubo error
+
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Perfil Actualizado")));

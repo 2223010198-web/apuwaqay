@@ -27,7 +27,7 @@ class _SideMenuState extends State<SideMenu> {
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos la ruta actual para saber qué opción resaltar o desactivar
+
     final currentRoute = ModalRoute.of(context)?.settings.name;
 
     return Drawer(

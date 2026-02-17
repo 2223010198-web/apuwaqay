@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart'; // Necesario para manejar las coordenadas
-import 'dashboard_screen.dart'; // Importamos el dashboard
-import '../map/map_screen.dart'; // Importamos el mapa
-import '../history/history_screen.dart'; // Importamos el historial
+import 'package:latlong2/latlong.dart';
+
+// IMPORTS DE LAS PANTALLAS
+import 'dashboard_screen.dart';
+import '../map/map_screen.dart';
+import '../history/history_screen.dart';
+import '../settings/settings_screen.dart'; // Opcional si quieres settings abajo
 
 class HomeLayout extends StatefulWidget {
   const HomeLayout({super.key});
@@ -12,58 +15,72 @@ class HomeLayout extends StatefulWidget {
 }
 
 class _HomeLayoutState extends State<HomeLayout> {
-  int _selectedIndex = 0; // Controla qué pestaña está activa (0, 1 o 2)
-  LatLng? _selectedMapLocation; // Variable para guardar la coordenada destino desde el historial
+  int _currentIndex = 0; // 0: Inicio, 1: Mapa, 2: Historial
 
-  // Función que llama el Historial para cambiar de pestaña al Mapa
-  void _goToMapTab(LatLng location) {
+  // Variable para pasar coordenadas específicas al mapa (desde el historial)
+  LatLng? _initialMapCoords;
+
+  // Función para cambiar de pestaña manualmente
+  void _goToTab(int index) {
     setState(() {
-      _selectedMapLocation = location; // Guardamos la coordenada del huayco
-      _selectedIndex = 1; // Cambiamos a la pestaña del Mapa (índice 1)
+      _currentIndex = index;
+    });
+  }
+
+  // Función especial: Ir al mapa y centrar en una coordenada
+  void _goToMapWithCoords(LatLng coords) {
+    setState(() {
+      _initialMapCoords = coords; // Guardamos la coordenada
+      _currentIndex = 1;          // Cambiamos a la pestaña del Mapa
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Definimos las páginas aquí dentro para poder pasarles los argumentos y funciones actualizadas
+    // Definimos las pantallas aquí para poder pasarles las funciones
     final List<Widget> pages = [
-      const DashboardScreen(), // 0: Monitor
+      // 0. DASHBOARD (Le pasamos la función para ir al mapa)
+      DashboardScreen(
+        onMapTap: () => _goToTab(1),
+      ),
 
-      // 1: Mapa (Recibe la ubicación si viene del historial para centrarse allí)
-      MapScreen(focusLocation: _selectedMapLocation),
+      // 1. MAPA
+      MapScreen(
+        initialCoords: _initialMapCoords, // Si hay coordenada guardada, la usa
+      ),
 
-      // 2: Historial (Recibe la función para poder cambiar al mapa)
-      HistoryScreen(onMapRequest: _goToMapTab),
+      // 2. HISTORIAL (Le pasamos la función para ver eventos en el mapa)
+      HistoryScreen(
+        onMapRequest: (coords) => _goToMapWithCoords(coords),
+      ),
     ];
 
     return Scaffold(
-      // El cuerpo cambia según la pestaña seleccionada
-      body: pages[_selectedIndex],
+      // El cuerpo cambia según el índice seleccionado
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
+      ),
 
       // BARRA DE NAVEGACIÓN INFERIOR
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (int index) {
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) {
           setState(() {
-            _selectedIndex = index;
-
-            // Si el usuario toca el botón Mapa manualmente, podemos limpiar el foco
-            // para que no se quede "pegado" en el evento anterior (Opcional)
-            if (index == 1) {
-              // _selectedMapLocation = null;
-            }
+            _currentIndex = index;
+            _initialMapCoords = null; // Limpiamos coordenadas al cambiar manualmente
           });
         },
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.analytics_outlined),
-            selectedIcon: Icon(Icons.analytics),
-            label: 'Monitor',
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Inicio',
           ),
           NavigationDestination(
             icon: Icon(Icons.map_outlined),
             selectedIcon: Icon(Icons.map),
-            label: 'Mapa Riesgo',
+            label: 'Mapa',
           ),
           NavigationDestination(
             icon: Icon(Icons.history_outlined),

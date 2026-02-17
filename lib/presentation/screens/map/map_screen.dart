@@ -6,7 +6,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
-// 1. CLASE MODELO PARA AGRUPAR LOS DATOS DE CADA ZONA
 class ApuZone {
   final String name;
   final LatLng sensorLocation;
@@ -23,10 +22,11 @@ class ApuZone {
   });
 }
 
-class MapScreen extends StatefulWidget {
-  final LatLng? focusLocation;
 
-  const MapScreen({super.key, this.focusLocation});
+class MapScreen extends StatefulWidget {
+
+  final LatLng? initialCoords;
+  const MapScreen({super.key, this.initialCoords});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -41,42 +41,32 @@ class _MapScreenState extends State<MapScreen> {
   bool _isSearching = false;
   LatLng? _myPosition;
 
-  // ---------------------------------------------------------------------------
-  // 📍 BASE DE DATOS DE ZONAS (EDITABLE)
-  // ---------------------------------------------------------------------------
-  final List<ApuZone> _allZones = [
-    // ZONA 1: VILLA MARÍA DEL TRIUNFO (Original)
-    ApuZone(
-      name: "VMT - Quebrada",
-      sensorLocation: const LatLng(-12.155375, -76.923746),
-// ZONA ROJA: El cauce natural del huayco (Peligro Muy Alto)
-      redZone: [
-        const LatLng(-12.148000, -76.912500), // Inicio (Parte Alta)
-        const LatLng(-12.150500, -76.915200), // Sensor
-        const LatLng(-12.153200, -76.918500), // Curva del cauce
-        const LatLng(-12.156800, -76.921500), // Zona media
-        const LatLng(-12.160500, -76.924800), // Desembocadura
-        const LatLng(-12.160000, -76.925500), // Ancho del cauce (izq)
-        const LatLng(-12.156000, -76.922500), // Retorno borde izq
-        const LatLng(-12.152500, -76.919000),
-        const LatLng(-12.148500, -76.913500), // Cierre polígono
-      ],
 
-      // 🟠 ZONA NARANJA: LADERAS INESTABLES (Asentamientos en pendiente)
-      // Zonas de alto riesgo por deslizamiento o desborde lateral
+  final List<ApuZone> _allZones = [
+
+    ApuZone(
+      name: "VMT - Quebrada Mariátegui",
+      sensorLocation: const LatLng(-12.155375, -76.923746),
+      redZone: [
+        const LatLng(-12.148000, -76.912500),
+        const LatLng(-12.150500, -76.915200),
+        const LatLng(-12.153200, -76.918500),
+        const LatLng(-12.156800, -76.921500),
+        const LatLng(-12.160500, -76.924800),
+        const LatLng(-12.160000, -76.925500),
+        const LatLng(-12.156000, -76.922500),
+        const LatLng(-12.152500, -76.919000),
+        const LatLng(-12.148500, -76.913500),
+      ],
       orangeZone: [
-        const LatLng(-12.149000, -76.911000), // Ladera Derecha Alta
+        const LatLng(-12.149000, -76.911000),
         const LatLng(-12.154000, -76.917000),
         const LatLng(-12.158000, -76.921000),
-        const LatLng(-12.158500, -76.920000), // Borde externo
+        const LatLng(-12.158500, -76.920000),
         const LatLng(-12.154500, -76.916000),
         const LatLng(-12.150000, -76.910000),
       ],
-
-      // 🟢 ZONA VERDE: PUNTOS DE REUNIÓN SEGUROS (Lozas y Colegios)
-      // Áreas planas alejadas del cauce principal
       greenZone: [
-        // Polígono 1: Loza Deportiva Segura (Ejemplo)
         const LatLng(-12.162000, -76.926000),
         const LatLng(-12.162000, -76.928000),
         const LatLng(-12.164000, -76.928000),
@@ -84,11 +74,11 @@ class _MapScreenState extends State<MapScreen> {
       ],
     ),
 
-    // ZONA 2: CHOSICA (Nueva)
+
     ApuZone(
       name: "Chosica - Río Rímac",
-      sensorLocation: const LatLng(-11.942000, -76.702000), // Centro Chosica
-      redZone: [ // Cauce del río (Peligro)
+      sensorLocation: const LatLng(-11.942000, -76.702000),
+      redZone: [
         const LatLng(-11.938000, -76.698000),
         const LatLng(-11.942000, -76.702000),
         const LatLng(-11.945000, -76.705000),
@@ -96,13 +86,13 @@ class _MapScreenState extends State<MapScreen> {
         const LatLng(-11.941000, -76.703000),
         const LatLng(-11.937000, -76.699000),
       ],
-      orangeZone: [ // Ribera (Riesgo Medio)
+      orangeZone: [
         const LatLng(-11.936000, -76.697000),
         const LatLng(-11.946000, -76.707000),
         const LatLng(-11.948000, -76.704000),
         const LatLng(-11.938000, -76.695000),
       ],
-      greenZone: [ // Plaza / Zona Alta (Seguro)
+      greenZone: [
         const LatLng(-11.940000, -76.708000),
         const LatLng(-11.940000, -76.710000),
         const LatLng(-11.938000, -76.710000),
@@ -110,18 +100,27 @@ class _MapScreenState extends State<MapScreen> {
       ],
     ),
   ];
-  // ---------------------------------------------------------------------------
 
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
 
-    // Si hay un foco inicial (desde historial), moverse allí tras construir
-    if (widget.focusLocation != null) {
+    if (widget.initialCoords != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapController.move(widget.focusLocation!, 16.5);
+        _mapController.move(widget.initialCoords!, 16.5);
       });
+    } else {
+      _getCurrentLocation();
+    }
+  }
+
+  @override
+  void didUpdateWidget(MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.initialCoords != null && widget.initialCoords != oldWidget.initialCoords) {
+      debugPrint("📍 Moviendo mapa a: ${widget.initialCoords}");
+      _mapController.move(widget.initialCoords!, 16.5);
     }
   }
 
@@ -129,6 +128,10 @@ class _MapScreenState extends State<MapScreen> {
     try {
       Position position = await Geolocator.getCurrentPosition();
       setState(() => _myPosition = LatLng(position.latitude, position.longitude));
+
+      if (widget.initialCoords == null && mounted) {
+        _mapController.move(_myPosition!, 15.0);
+      }
     } catch (e) { debugPrint("Error GPS: $e"); }
   }
 
@@ -141,44 +144,22 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // --- FUNCIÓN NUEVA: ALEJAR Y VER TODOS LOS SENSORES ---
   void _fitAllMarkers() {
     if (_allZones.isEmpty) return;
-
-    // 1. Recolectamos todas las coordenadas de los sensores
     List<LatLng> points = _allZones.map((z) => z.sensorLocation).toList();
-
-    // 2. Calculamos los límites (Bounds) que encierran esos puntos
     LatLngBounds bounds = LatLngBounds.fromPoints(points);
-
-    // 3. Ajustamos la cámara con un margen (padding) para que no queden pegados a los bordes
-    _mapController.fitCamera(
-      CameraFit.bounds(
-        bounds: bounds,
-        padding: const EdgeInsets.all(80),
-      ),
-    );
+    _mapController.fitCamera(CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(80)));
   }
 
-  // --- FUNCIÓN DE BÚSQUEDA ---
   Future<void> _searchPlaces(String query) async {
-    if (query.length < 3) {
-      setState(() => _searchResults = []);
-      return;
-    }
+    if (query.length < 3) { setState(() => _searchResults = []); return; }
     setState(() => _isSearching = true);
     try {
-      final url = Uri.parse(
-          'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=5&addressdetails=1&countrycodes=pe');
+      final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=5&addressdetails=1&countrycodes=pe');
       final response = await http.get(url, headers: {'User-Agent': 'com.apuwaqay.app'});
-      if (response.statusCode == 200) {
-        setState(() => _searchResults = json.decode(response.body));
-      }
-    } catch (e) {
-      debugPrint("Error búsqueda: $e");
-    } finally {
-      setState(() => _isSearching = false);
-    }
+      if (response.statusCode == 200) setState(() => _searchResults = json.decode(response.body));
+    } catch (e) { debugPrint("Error búsqueda: $e"); }
+    finally { setState(() => _isSearching = false); }
   }
 
   @override
@@ -186,29 +167,23 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // -----------------------------------------------------------
-          // 1. EL MAPA
-          // -----------------------------------------------------------
+
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              // Si venimos del historial, centramos ahí. Si no, en el primer sensor.
-              initialCenter: widget.focusLocation ?? _allZones[0].sensorLocation,
-              initialZoom: widget.focusLocation != null ? 16.5 : 15.0,
+              initialCenter: widget.initialCoords ?? _allZones[0].sensorLocation,
+              initialZoom: widget.initialCoords != null ? 16.5 : 15.0,
               interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
             ),
             children: [
-              // A. Mapa Base
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.apuwaqay.app',
               ),
 
-              // B. Capa de Zonas (Polígonos de Riesgo)
               if (_showZones)
                 PolygonLayer(
                   polygons: [
-                    // Recorremos TODAS las zonas registradas en _allZones
                     for (var zone in _allZones) ...[
                       // Zona Roja
                       Polygon(
@@ -238,10 +213,8 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
 
-              // C. Capa de Marcadores
               MarkerLayer(
                 markers: [
-                  // --- MARCADORES DE APU WAQAY (Interactivos) ---
                   for (var zone in _allZones)
                     Marker(
                       point: zone.sensorLocation,
@@ -249,7 +222,6 @@ class _MapScreenState extends State<MapScreen> {
                       height: 60,
                       child: GestureDetector(
                         onTap: () {
-                          // AL TOCAR: Acercar cámara a este sensor
                           _mapController.move(zone.sensorLocation, 16.5);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -280,7 +252,6 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
 
-                  // --- MI UBICACIÓN ---
                   if (_myPosition != null)
                     Marker(
                       point: _myPosition!,
@@ -289,22 +260,23 @@ class _MapScreenState extends State<MapScreen> {
                       child: const Icon(Icons.my_location, color: Colors.blue, size: 30),
                     ),
 
-                  // --- MARCADOR DE EVENTO HISTÓRICO ---
-                  if (widget.focusLocation != null)
+                  if (widget.initialCoords != null)
                     Marker(
-                      point: widget.focusLocation!,
-                      width: 50,
-                      height: 50,
-                      child: const Icon(Icons.location_on, color: Colors.purple, size: 50),
+                      point: widget.initialCoords!,
+                      width: 60, height: 60,
+                      child: const Column(
+                        children: [
+                          Icon(Icons.location_on, color: Colors.purple, size: 40),
+                          Text("Evento", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.purple, backgroundColor: Colors.white)),
+                        ],
+                      ),
                     ),
                 ],
               ),
             ],
           ),
 
-          // -----------------------------------------------------------
-          // 2. BARRA SUPERIOR (Buscador + Toggle Capas)
-          // -----------------------------------------------------------
+
           Positioned(
             top: 40,
             left: 15,
@@ -347,7 +319,7 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ],
                 ),
-                // Resultados de Búsqueda
+
                 if (_searchResults.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(top: 10, left: 10, right: 10),
@@ -383,9 +355,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // -----------------------------------------------------------
-          // 3. LEYENDA FLOTANTE
-          // -----------------------------------------------------------
+
           Positioned(
             bottom: 30,
             left: 20,
@@ -417,15 +387,13 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // -----------------------------------------------------------
-          // 4. BOTONES FLOTANTES (Ver Todo + Mi Ubicación)
-          // -----------------------------------------------------------
+
           Positioned(
             bottom: 30,
             right: 20,
             child: Column(
               children: [
-                // Botón VER TODOS
+
                 FloatingActionButton.small(
                   heroTag: "btn_fit_all",
                   onPressed: _fitAllMarkers,
@@ -435,7 +403,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Botón MI UBICACIÓN
+
                 FloatingActionButton(
                   heroTag: "btn_my_loc",
                   onPressed: _goToMyLocation,
@@ -450,7 +418,6 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // Widget auxiliar para items de la leyenda
   Widget _legendItem(Color color, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),

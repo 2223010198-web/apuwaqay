@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import '../../domain/models/huayco_event.dart'; // Importamos el modelo nuevo
+import '../../domain/models/huayco_event.dart';
 
 class EventCard extends StatelessWidget {
   final HuaycoEvent event;

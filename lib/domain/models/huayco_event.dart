@@ -4,7 +4,7 @@ class HuaycoEvent {
   final String title;
   final String date;
   final String location;
-  final String severity; // 'Alta', 'Media', 'Baja'
+  final String severity;
   final String description;
   final String source;
   final LatLng coords;

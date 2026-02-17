@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:latlong2/latlong.dart';
 
-// --- IMPORTS DE MODELOS Y COMPONENTES ---
-import '../../../domain/models/huayco_event.dart';      // Modelo de datos
-import '../../widgets/side_menu.dart';               // Menú lateral reutilizable
-import '../../widgets/emergency_button.dart';        // Botones de emergencia
-import '../../widgets/event_card.dart';              // Tarjeta de evento
+
+import '../../../domain/models/huayco_event.dart';
+import '../../widgets/side_menu.dart';
+import '../../widgets/emergency_button.dart';
+import '../../widgets/event_card.dart';
 
 class HistoryScreen extends StatefulWidget {
   final Function(LatLng)? onMapRequest;
@@ -18,15 +18,15 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  // Clave para controlar el Scaffold y abrir el Drawer manualmente
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final TextEditingController _searchController = TextEditingController();
 
-  // Variable para controlar si mostramos la lista o el detalle
+
   HuaycoEvent? _selectedEvent;
 
-  // --- DATOS SIMULADOS (Usando el modelo importado) ---
+
   final List<HuaycoEvent> _allEvents = [
     HuaycoEvent(
       title: "Desborde Quebrada del Toro",
@@ -61,7 +61,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       description: "El fenómeno 'El Niño Costero' provocó uno de los desastres más grandes en la zona de Cajamarquilla.",
       source: "Noticias",
       coords: const LatLng(-11.950, -76.980),
-      images: [], // Sin imágenes
+      images: [],
     ),
     HuaycoEvent(
       title: "Alerta Río Rímac",
@@ -104,7 +104,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // PopScope maneja el botón "Atrás" físico de Android
+
     return PopScope(
       canPop: _selectedEvent == null,
       onPopInvoked: (didPop) {
@@ -113,25 +113,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
         }
       },
       child: Scaffold(
-        key: _scaffoldKey, // Asignamos la llave para controlar el Drawer
+        key: _scaffoldKey,
         backgroundColor: Colors.grey[50],
 
-        // MENÚ LATERAL IMPORTADO
+
         drawer: const SideMenu(),
 
-        // RENDERIZADO CONDICIONAL: Lista o Detalle
+
         body: _selectedEvent != null ? _buildDetailView() : _buildListView(),
       ),
     );
   }
 
-  // --- VISTA 1: LISTA DE EVENTOS ---
+
   Widget _buildListView() {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header personalizado
+
           Container(
             padding: const EdgeInsets.only(top: 40, left: 10, right: 20, bottom: 20),
             color: Colors.white,
@@ -153,7 +153,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
           const SizedBox(height: 20),
 
-          // Buscador
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
@@ -175,7 +175,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text("Registro de Eventos", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
           const SizedBox(height: 10),
 
-          // Lista usando el componente reutilizable EventCard
+
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -197,14 +197,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- VISTA 2: DETALLE DEL EVENTO ---
+
   Widget _buildDetailView() {
     final event = _selectedEvent!;
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header detalle con botón volver
+
           Container(
             padding: const EdgeInsets.only(top: 40, left: 10, right: 20, bottom: 10),
             color: Colors.white,
@@ -219,7 +219,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
 
-          // Carrusel de Imágenes
+
           SizedBox(
             height: 250,
             child: event.images.isNotEmpty
@@ -239,7 +239,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
 
-          // Banner de Severidad
+
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10),
@@ -263,7 +263,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                 const SizedBox(height: 30),
 
-                // Botón Ver en Mapa
+
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -292,7 +292,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- SECCIÓN DE EMERGENCIA (Usa widgets importados) ---
+
   Widget _buildEmergencySection() {
     return Container(
         padding: const EdgeInsets.all(20),
@@ -316,8 +316,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-// --- WIDGET LOCAL ---
-// Mantenemos este pequeño widget aquí porque es muy específico de la vista de detalle
+
+
 class _DetailRow extends StatelessWidget {
   final IconData icon; final String label; final String value;
   const _DetailRow({required this.icon, required this.label, required this.value});

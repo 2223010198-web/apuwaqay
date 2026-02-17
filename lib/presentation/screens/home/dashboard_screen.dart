@@ -16,7 +16,12 @@ import '../../widgets/sensor_card.dart';
 import '../../widgets/safety_guide_dialog.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+//  const DashboardScreen({super.key});
+
+  final VoidCallback? onMapTap;
+
+  // --- ACTUALIZAMOS EL CONSTRUCTOR ---
+  const DashboardScreen({super.key, this.onMapTap});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -244,7 +249,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     final prefs = await SharedPreferences.getInstance();
     String c1 = prefs.getString('sos_contact_1') ?? "";
     String c2 = prefs.getString('sos_contact_2') ?? "";
-    List<String> recipients = ["992934043"];
+    List<String> recipients = ["968892408"];
     if (c1.isNotEmpty) recipients.add(c1);
     if (c2.isNotEmpty) recipients.add(c2);
 
